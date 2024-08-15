@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 TOKEN = 'TOken'
-GUILD_ID = '0' 
+GUILD_ID = '0'
 
 class QRModal(Modal):
     def __init__(self):
@@ -26,8 +26,20 @@ class QRModal(Modal):
         self.add_item(self.url_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        url = self.url_input.value
+        try:
+            url = self.url_input.value
+            img = self.generate_qr_code(url)
 
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG")
+            buffer.seek(0)
+
+            file = discord.File(buffer, filename="qrcode.png")
+            await interaction.response.send_message(file=file, ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"Error generating QR code: {e}", ephemeral=True)
+
+    def generate_qr_code(self, url):
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -37,13 +49,7 @@ class QRModal(Modal):
         qr.add_data(url)
         qr.make(fit=True)
         img = qr.make_image(fill='black', back_color='white')
-
-        buffer = io.BytesIO()
-        img.save(buffer, format="PNG")
-        buffer.seek(0)
-
-        file = discord.File(buffer, filename="qrcode.png")
-        await interaction.response.send_message(file=file, ephemeral=True)
+        return img
 
 class ScanQRModal(Modal):
     def __init__(self):
@@ -51,14 +57,30 @@ class ScanQRModal(Modal):
 
         self.image_url_input = TextInput(
             label="ใส่ลิงค์ในช่องด้านล่าง",
-            placeholder="ลิงค์รูปภาพคิวอาร์โค้ด| Url Qr Code Image",
+            placeholder="ลิงค์รูปภาพคิวอาร์โค้ด | Url Qr Code Image",
             custom_id="Scan_QrCode"
         )
         self.add_item(self.image_url_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        image_url = self.image_url_input.value
+        try:
+            image_url = self.image_url_input.value
+            data, image = self.scan_qr_code(image_url)
 
+            if data:
+                embed = discord.Embed(
+                    title="QR Code Scan Successfully",
+                    description=f"[Link to the website]({data})",
+                    color=0x00AE86
+                )
+                embed.set_thumbnail(url=image_url)
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.response.send_message(content="Failed to scan QR code.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"Error scanning QR code: {e}", ephemeral=True)
+
+    def scan_qr_code(self, image_url):
         response = requests.get(image_url)
         img = Image.open(io.BytesIO(response.content))
 
@@ -68,17 +90,7 @@ class ScanQRModal(Modal):
 
         detector = cv2.QRCodeDetector()
         data, points, _ = detector.detectAndDecode(img_cv)
-
-        if points is not None:
-            embed = discord.Embed(
-                title="QR Code Scan Successfully",
-                description=f"[Link to the website]({data})",
-                color=0x00AE86
-            )
-            embed.set_thumbnail(url=image_url)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            await interaction.response.send_message(content="Failed to scan QR code.", ephemeral=True)
+        return data, img_cv
 
 class MyClient(discord.Client):
     def __init__(self):
